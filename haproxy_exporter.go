@@ -329,20 +329,49 @@ func fetchUnix(u *url.URL, timeout time.Duration, nbproc int ) func() (io.ReadCl
 	}
 }
 //func ScrapeRow(csvRead *csv.Reader) (*csv.Reader) {
-func ScrapeRow(csvRead *csv.Reader) ([][]string) {
+func ScrapeRow(csvRead *csv.Reader) (rows [][]string) {
 	//newArr := csv.NewReader(nil)
-	rows := [][]string{}
+	//rows := [][]string{}
+	i := 0
+	need_to_sum := []int{4,7,8,9,10,12,13,14,15,16,33,39,40,41,42,43,44,48}
 	for {
+		i++
 		row, err := csvRead.Read()
 		fmt.Println(reflect.TypeOf(row))
 		if err != nil {
 			log.Errorf("can't read row: %v", err)
 			return
 		}
-		log.Info("Debug row: ", row[1])
+		if i == 1 {
+			rows = append(rows,row)
+		}
+		find_existing := false
+		rIndex := 0
+		for j := range rows{
+			if rows[j][0] == row[0] && rows[j][1] == row[1] {
+				//log.Info("find existing row: ", row[0] , " - ", rows[j][1])
+				find_existing = true
+				rIndex = j
+			}
+		}
+		if find_existing {
+			log.Info("find existing row: ", row[0], " - ", row[1] )
+			//prev := 0
+			//cur := 0
+                        for _, col := range need_to_sum{
+				prev, _ := strconv.Atoi(rows[rIndex][col])
+				cur, _ := strconv.Atoi(row[col])
+				rows[rIndex][col] = strconv.Itoa(prev + cur)
+				log.Info("to value : ", prev, " added ", cur, " sum= ", rows[rIndex][col] )
+			}
+
+		}else{
+			rows = append(rows,row)
+		}
+		log.Info("Debug row end: ", row[1])
 
 	}
-	//return rows
+	return
 }
 
 func (e *Exporter) scrape() {
@@ -361,7 +390,12 @@ func (e *Exporter) scrape() {
 
 	reader.TrailingComma = true
 	reader.Comment = '#'
-	ScrapeRow(reader)
+	newreader := ScrapeRow(reader)
+	for _, value := range newreader {
+		reader = csv.NewReader(value)
+	}
+	fmt.Println(reflect.TypeOf(newreader))
+
 
 loop:
 	for {
