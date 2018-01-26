@@ -16,6 +16,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"reflect"
+	"bytes"
+	"bufio"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -47,6 +50,8 @@ var (
 	backendLabelNames  = []string{"backend"}
 	serverLabelNames   = []string{"backend", "server"}
 )
+
+var haProxyNbProc int
 
 func newFrontendMetric(metricName string, docString string, constLabels prometheus.Labels) *prometheus.GaugeVec {
 	return prometheus.NewGaugeVec(
@@ -149,26 +154,12 @@ func NewExporter(uri string, sslVerify bool, selectedServerMetrics map[int]*prom
 	}
 
 	var fetch func() (io.ReadCloser, error)
+	//buf := new(bytes.Buffer)
 	switch u.Scheme {
 	case "http", "https", "file":
 		fetch = fetchHTTP(uri, sslVerify, timeout)
 	case "unix":
-		if nbproc == 1 {
-			fetch = fetchUnix(u, timeout)
-		}else {
-			//fetch = fetchUnix(u, timeout)
-			for i:=1; i <= nbproc; i++ {
-				fmt.Println(uri+strconv.Itoa(i))
-				unew, err := url.Parse(uri+strconv.Itoa(i))
-				if err != nil {
-					return nil, err
-				}
-				fetch = fetchUnix(unew, timeout)
-				fmt.Println(fetch)
-
-			}
-		}
-
+		fetch = fetchUnix(u, timeout, nbproc)
 
 	default:
 		return nil, fmt.Errorf("unsupported scheme: %q", u.Scheme)
@@ -298,33 +289,64 @@ func fetchHTTP(uri string, sslVerify bool, timeout time.Duration) func() (io.Rea
 	}
 }
 
-func fetchUnix(u *url.URL, timeout time.Duration) func() (io.ReadCloser, error) {
+func fetchUnix(u *url.URL, timeout time.Duration, nbproc int ) func() (io.ReadCloser, error) {
+	var content []byte
+	var upath string
 	return func() (io.ReadCloser, error) {
-		f, err := net.DialTimeout("unix", u.Path, timeout)
-		if err != nil {
-			return nil, err
+		for i:=1; i <= nbproc; i++ {
+			if nbproc >= 1 {
+				upath =  u.Path+strconv.Itoa(i)
+			}else{
+				upath =  u.Path
+			}
+			fmt.Println(upath)
+			f, err := net.DialTimeout("unix", upath, timeout)
+			if err != nil {
+				return nil, err
+			}
+			if err := f.SetDeadline(time.Now().Add(timeout)); err != nil {
+				f.Close()
+				return nil, err
+			}
+			cmd := "show stat\n"
+			n, err := io.WriteString(f, cmd)
+			if err != nil {
+				f.Close()
+				return nil, err
+			}
+			if n != len(cmd) {
+				f.Close()
+				return nil, errors.New("write error")
+			}
+
+			contents, _ := ioutil.ReadAll(bufio.NewReader(f))
+			content = append(content, contents...)
+			log.Info("Request: %s", string(content))
+			fmt.Println(reflect.TypeOf(contents))
 		}
-		if err := f.SetDeadline(time.Now().Add(timeout)); err != nil {
-			f.Close()
-			return nil, err
-		}
-		cmd := "show stat\n"
-		n, err := io.WriteString(f, cmd)
-		if err != nil {
-			f.Close()
-			return nil, err
-		}
-		if n != len(cmd) {
-			f.Close()
-			return nil, errors.New("write error")
-		}
-		return f, nil
+		fmt.Println(upath)
+		return ioutil.NopCloser(bytes.NewReader(content)), nil
 	}
+}
+//func ScrapeRow(csvRead *csv.Reader) (*csv.Reader) {
+func ScrapeRow(csvRead *csv.Reader) ([][]string) {
+	//newArr := csv.NewReader(nil)
+	rows := [][]string{}
+	for {
+		row, err := csvRead.Read()
+		fmt.Println(reflect.TypeOf(row))
+		if err != nil {
+			log.Errorf("can't read row: %v", err)
+			return
+		}
+		log.Info("Debug row: ", row[1])
+
+	}
+	//return rows
 }
 
 func (e *Exporter) scrape() {
 	e.totalScrapes.Inc()
-
 	body, err := e.fetch()
 	if err != nil {
 		e.up.Set(0)
@@ -334,9 +356,12 @@ func (e *Exporter) scrape() {
 	defer body.Close()
 	e.up.Set(1)
 
+
 	reader := csv.NewReader(body)
+
 	reader.TrailingComma = true
 	reader.Comment = '#'
+	ScrapeRow(reader)
 
 loop:
 	for {
@@ -357,6 +382,7 @@ loop:
 		}
 		e.parseRow(row)
 	}
+
 }
 
 func (e *Exporter) resetMetrics() {
@@ -449,6 +475,7 @@ func (e *Exporter) exportCsvFields(metrics map[int]*prometheus.GaugeVec, csvRow 
 			e.csvParseFailures.Inc()
 			continue
 		}
+		//log.Info("Request: %s", haProxyNbProc)
 		metric.WithLabelValues(labels...).Set(value)
 	}
 }
