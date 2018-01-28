@@ -16,6 +16,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"reflect"
+	"bytes"
+	"bufio"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -142,7 +145,7 @@ type Exporter struct {
 }
 
 // NewExporter returns an initialized Exporter.
-func NewExporter(uri string, sslVerify bool, selectedServerMetrics map[int]*prometheus.GaugeVec, timeout time.Duration) (*Exporter, error) {
+func NewExporter(uri string, sslVerify bool, selectedServerMetrics map[int]*prometheus.GaugeVec, timeout time.Duration, nbproc int) (*Exporter, error) {
 	u, err := url.Parse(uri)
 	if err != nil {
 		return nil, err
@@ -153,7 +156,8 @@ func NewExporter(uri string, sslVerify bool, selectedServerMetrics map[int]*prom
 	case "http", "https", "file":
 		fetch = fetchHTTP(uri, sslVerify, timeout)
 	case "unix":
-		fetch = fetchUnix(u, timeout)
+		fetch = fetchUnix(u, timeout, nbproc)
+
 	default:
 		return nil, fmt.Errorf("unsupported scheme: %q", u.Scheme)
 	}
@@ -282,28 +286,96 @@ func fetchHTTP(uri string, sslVerify bool, timeout time.Duration) func() (io.Rea
 	}
 }
 
-func fetchUnix(u *url.URL, timeout time.Duration) func() (io.ReadCloser, error) {
+func fetchUnix(u *url.URL, timeout time.Duration, nbproc int ) func() (io.ReadCloser, error) {
+	var content []byte
+	var upath string
 	return func() (io.ReadCloser, error) {
-		f, err := net.DialTimeout("unix", u.Path, timeout)
-		if err != nil {
-			return nil, err
+		for i:=1; i <= nbproc; i++ {
+			if nbproc >= 1 {
+				upath =  u.Path+strconv.Itoa(i)
+			}else{
+				upath =  u.Path
+			}
+			fmt.Println(upath)
+			f, err := net.DialTimeout("unix", upath, timeout)
+			if err != nil {
+				return nil, err
+			}
+			if err := f.SetDeadline(time.Now().Add(timeout)); err != nil {
+				f.Close()
+				return nil, err
+			}
+			cmd := "show stat\n"
+			n, err := io.WriteString(f, cmd)
+			if err != nil {
+				f.Close()
+				return nil, err
+			}
+			if n != len(cmd) {
+				f.Close()
+				return nil, errors.New("write error")
+			}
+
+			contents, _ := ioutil.ReadAll(bufio.NewReader(f))
+			content = append(content, contents...)
+			log.Info("Request: %s", string(content))
+			fmt.Println(reflect.TypeOf(contents))
 		}
-		if err := f.SetDeadline(time.Now().Add(timeout)); err != nil {
-			f.Close()
-			return nil, err
-		}
-		cmd := "show stat\n"
-		n, err := io.WriteString(f, cmd)
-		if err != nil {
-			f.Close()
-			return nil, err
-		}
-		if n != len(cmd) {
-			f.Close()
-			return nil, errors.New("write error")
-		}
-		return f, nil
+		fmt.Println(upath)
+		return_content := content
+		content = content[:0]
+		return ioutil.NopCloser(bytes.NewReader(return_content)), nil
 	}
+}
+//func ScrapeRow(csvRead *csv.Reader) (*csv.Reader) {
+func ScrapeRow(cbody io.ReadCloser) (rows [][]string) {
+	i := 0
+	need_to_sum := []int{4,7,8,9,10,12,13,14,15,16,33,39,40,41,42,43,44,48}
+	rows = rows[:0][:0]
+	csvRead := csv.NewReader(cbody)
+	csvRead.TrailingComma = true
+	csvRead.Comment = '#'
+	//log.Info("fuck: ", len(rows) )
+	for {
+		i++
+		row, err := csvRead.Read()
+		if err != nil {
+			log.Errorf("can't read row: %v", err)
+
+			return
+		}
+		if i == 1 {
+			rows = rows[:0][:0]
+			rows = append(rows,row)
+		}
+		find_existing := false
+		rIndex := 0
+		for j := range rows{
+			if rows[j][0] == row[0] && rows[j][1] == row[1] {
+				//log.Info("find existing row: ", row[0] , " - ", rows[j][1])
+				find_existing = true
+				rIndex = j
+			}
+		}
+		if find_existing {
+			//log.Info("find existing row: ", row[0], " - ", row[1] )
+                        for _, col := range need_to_sum{
+
+				prev, _ := strconv.Atoi(rows[rIndex][col])
+				cur, _ := strconv.Atoi(row[col])
+				rows[rIndex][col] = strconv.Itoa(prev + cur)
+				//log.Info("to value : ", prev, " added ", cur, " sum= ", rows[rIndex][col] )
+				prev = 0
+				cur = 0
+			}
+
+		}else{
+			rows = append(rows,row)
+		}
+		row = row[:0]
+		log.Info("Debug row end: ", i)
+	}
+	return
 }
 
 func (e *Exporter) scrape() {
@@ -318,9 +390,14 @@ func (e *Exporter) scrape() {
 	defer body.Close()
 	e.up.Set(1)
 
-	reader := csv.NewReader(body)
-	reader.TrailingComma = true
-	reader.Comment = '#'
+	var newData string
+	for _, value := range ScrapeRow(body) {
+		s := strings.Join(value,",")
+		newData += s + "\n"
+	}
+	//log.Info("Debug row end: ", newData, " --- ")
+	reader := csv.NewReader(strings.NewReader(newData))
+	newData = newData[:0]
 
 loop:
 	for {
@@ -341,6 +418,7 @@ loop:
 		}
 		e.parseRow(row)
 	}
+
 }
 
 func (e *Exporter) resetMetrics() {
@@ -433,6 +511,7 @@ func (e *Exporter) exportCsvFields(metrics map[int]*prometheus.GaugeVec, csvRow 
 			e.csvParseFailures.Inc()
 			continue
 		}
+		//log.Info("Request: %s", haProxyNbProc)
 		metric.WithLabelValues(labels...).Set(value)
 	}
 }
@@ -476,6 +555,7 @@ func main() {
 		listenAddress             = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9101").String()
 		metricsPath               = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
 		haProxyScrapeURI          = kingpin.Flag("haproxy.scrape-uri", "URI on which to scrape HAProxy.").Default("http://localhost/;csv").String()
+		haProxyNbProc             = kingpin.Flag("haproxy.nbproc", "How many procceses of Haproxy is run.").Default("1").Int()
 		haProxySSLVerify          = kingpin.Flag("haproxy.ssl-verify", "Flag that enables SSL certificate verification for the scrape URI").Default("true").Bool()
 		haProxyServerMetricFields = kingpin.Flag("haproxy.server-metric-fields", "Comma-separated list of exported server metrics. See http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#9.1").Default(serverMetrics.String()).String()
 		haProxyTimeout            = kingpin.Flag("haproxy.timeout", "Timeout for trying to get stats from HAProxy.").Default("5s").Duration()
@@ -495,7 +575,7 @@ func main() {
 	log.Infoln("Starting haproxy_exporter", version.Info())
 	log.Infoln("Build context", version.BuildContext())
 
-	exporter, err := NewExporter(*haProxyScrapeURI, *haProxySSLVerify, selectedServerMetrics, *haProxyTimeout)
+	exporter, err := NewExporter(*haProxyScrapeURI, *haProxySSLVerify, selectedServerMetrics, *haProxyTimeout, *haProxyNbProc)
 	if err != nil {
 		log.Fatal(err)
 	}
