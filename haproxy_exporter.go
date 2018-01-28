@@ -330,19 +330,23 @@ func fetchUnix(u *url.URL, timeout time.Duration, nbproc int ) func() (io.ReadCl
 }
 //func ScrapeRow(csvRead *csv.Reader) (*csv.Reader) {
 func ScrapeRow(csvRead *csv.Reader) (rows [][]string) {
-	//newArr := csv.NewReader(nil)
-	//rows := [][]string{}
 	i := 0
 	need_to_sum := []int{4,7,8,9,10,12,13,14,15,16,33,39,40,41,42,43,44,48}
+	rows = rows[:0][:0]
+
+	//log.Info("fuck: ", len(rows) )
 	for {
 		i++
 		row, err := csvRead.Read()
-		fmt.Println(reflect.TypeOf(row))
-		if err != nil {
-			log.Errorf("can't read row: %v", err)
+		//fmt.Println(reflect.TypeOf(row))
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			fmt.Println("Error:", err)
 			return
 		}
 		if i == 1 {
+			rows = rows[:0][:0]
 			rows = append(rows,row)
 		}
 		find_existing := false
@@ -355,21 +359,22 @@ func ScrapeRow(csvRead *csv.Reader) (rows [][]string) {
 			}
 		}
 		if find_existing {
-			log.Info("find existing row: ", row[0], " - ", row[1] )
-			//prev := 0
-			//cur := 0
+			//log.Info("find existing row: ", row[0], " - ", row[1] )
                         for _, col := range need_to_sum{
+
 				prev, _ := strconv.Atoi(rows[rIndex][col])
 				cur, _ := strconv.Atoi(row[col])
 				rows[rIndex][col] = strconv.Itoa(prev + cur)
-				log.Info("to value : ", prev, " added ", cur, " sum= ", rows[rIndex][col] )
+				//log.Info("to value : ", prev, " added ", cur, " sum= ", rows[rIndex][col] )
+				prev = 0
+				cur = 0
 			}
 
 		}else{
 			rows = append(rows,row)
 		}
-		log.Info("Debug row end: ", row[1])
-
+		row = row[:0]
+		log.Info("Debug row end: ", i)
 	}
 	return
 }
@@ -390,16 +395,20 @@ func (e *Exporter) scrape() {
 
 	reader.TrailingComma = true
 	reader.Comment = '#'
-	newreader := ScrapeRow(reader)
-	for _, value := range newreader {
-		reader = csv.NewReader(value)
+	// Hack strings to reader
+	//newreader := ScrapeRow(reader)
+	var newData string
+	for _, value := range ScrapeRow(reader) {
+		s := strings.Join(value,",")
+		newData += s + "\n"
 	}
-	fmt.Println(reflect.TypeOf(newreader))
-
+	log.Info("Debug row end: ", newData, " --- ")
+	reader2 := csv.NewReader(strings.NewReader(newData))
+	newData = newData[:0]
 
 loop:
 	for {
-		row, err := reader.Read()
+		row, err := reader2.Read()
 		switch err {
 		case nil:
 		case io.EOF:
