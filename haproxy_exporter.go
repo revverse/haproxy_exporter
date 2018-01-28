@@ -51,8 +51,6 @@ var (
 	serverLabelNames   = []string{"backend", "server"}
 )
 
-var haProxyNbProc int
-
 func newFrontendMetric(metricName string, docString string, constLabels prometheus.Labels) *prometheus.GaugeVec {
 	return prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -154,7 +152,6 @@ func NewExporter(uri string, sslVerify bool, selectedServerMetrics map[int]*prom
 	}
 
 	var fetch func() (io.ReadCloser, error)
-	//buf := new(bytes.Buffer)
 	switch u.Scheme {
 	case "http", "https", "file":
 		fetch = fetchHTTP(uri, sslVerify, timeout)
@@ -383,6 +380,7 @@ func ScrapeRow(cbody io.ReadCloser) (rows [][]string) {
 
 func (e *Exporter) scrape() {
 	e.totalScrapes.Inc()
+
 	body, err := e.fetch()
 	if err != nil {
 		e.up.Set(0)
@@ -397,7 +395,7 @@ func (e *Exporter) scrape() {
 		s := strings.Join(value,",")
 		newData += s + "\n"
 	}
-	log.Info("Debug row end: ", newData, " --- ")
+	//log.Info("Debug row end: ", newData, " --- ")
 	reader := csv.NewReader(strings.NewReader(newData))
 	newData = newData[:0]
 
