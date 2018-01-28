@@ -73,6 +73,12 @@ The scrape URL uses the 'unix:' scheme:
 haproxy_exporter --haproxy.scrape-uri=unix:/run/haproxy/admin.sock
 ```
 
+The scrape URL uses the 'unix:' scheme with nbproc > 1 :
+
+```bash
+haproxy_exporter  --haproxy.scrape-uri=unix:/var/lib/haproxy/stats --web.listen-address=0.0.0.0:10001 --haproxy.nbproc=3
+```
+where /var/lib/haproxy/stats is mask for sockets, app will use /var/lib/haproxy/stats1, /var/lib/haproxy/stats2, /var/lib/haproxy/stats3 files for nbproc=3 and so on
 ### Docker
 
 [![Docker Repository on Quay](https://quay.io/repository/prometheus/haproxy-exporter/status)][quay]
