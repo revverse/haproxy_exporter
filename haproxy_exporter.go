@@ -325,24 +325,26 @@ func fetchUnix(u *url.URL, timeout time.Duration, nbproc int ) func() (io.ReadCl
 			fmt.Println(reflect.TypeOf(contents))
 		}
 		fmt.Println(upath)
-		return ioutil.NopCloser(bytes.NewReader(content)), nil
+		return_content := content
+		content = content[:0]
+		return ioutil.NopCloser(bytes.NewReader(return_content)), nil
 	}
 }
 //func ScrapeRow(csvRead *csv.Reader) (*csv.Reader) {
-func ScrapeRow(csvRead *csv.Reader) (rows [][]string) {
+func ScrapeRow(cbody io.ReadCloser) (rows [][]string) {
 	i := 0
 	need_to_sum := []int{4,7,8,9,10,12,13,14,15,16,33,39,40,41,42,43,44,48}
 	rows = rows[:0][:0]
-
+	csvRead := csv.NewReader(cbody)
+	csvRead.TrailingComma = true
+	csvRead.Comment = '#'
 	//log.Info("fuck: ", len(rows) )
 	for {
 		i++
 		row, err := csvRead.Read()
-		//fmt.Println(reflect.TypeOf(row))
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			fmt.Println("Error:", err)
+		if err != nil {
+			log.Errorf("can't read row: %v", err)
+
 			return
 		}
 		if i == 1 {
@@ -390,25 +392,18 @@ func (e *Exporter) scrape() {
 	defer body.Close()
 	e.up.Set(1)
 
-
-	reader := csv.NewReader(body)
-
-	reader.TrailingComma = true
-	reader.Comment = '#'
-	// Hack strings to reader
-	//newreader := ScrapeRow(reader)
 	var newData string
-	for _, value := range ScrapeRow(reader) {
+	for _, value := range ScrapeRow(body) {
 		s := strings.Join(value,",")
 		newData += s + "\n"
 	}
 	log.Info("Debug row end: ", newData, " --- ")
-	reader2 := csv.NewReader(strings.NewReader(newData))
+	reader := csv.NewReader(strings.NewReader(newData))
 	newData = newData[:0]
 
 loop:
 	for {
-		row, err := reader2.Read()
+		row, err := reader.Read()
 		switch err {
 		case nil:
 		case io.EOF:
