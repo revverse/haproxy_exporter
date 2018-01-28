@@ -328,7 +328,7 @@ func fetchUnix(u *url.URL, timeout time.Duration, nbproc int ) func() (io.ReadCl
 	}
 }
 //func ScrapeRow(csvRead *csv.Reader) (*csv.Reader) {
-func ScrapeRow(cbody io.ReadCloser) (rows [][]string) {
+func SumRows(cbody io.ReadCloser) (rows [][]string) {
 	i := 0
 	need_to_sum := []int{4,7,8,9,10,12,13,14,15,16,33,39,40,41,42,43,44,48}
 	rows = rows[:0][:0]
@@ -391,7 +391,7 @@ func (e *Exporter) scrape() {
 	e.up.Set(1)
 
 	var newData string
-	for _, value := range ScrapeRow(body) {
+	for _, value := range SumRows(body) {
 		s := strings.Join(value,",")
 		newData += s + "\n"
 	}
