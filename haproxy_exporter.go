@@ -373,7 +373,7 @@ func ScrapeRow(cbody io.ReadCloser) (rows [][]string) {
 			rows = append(rows,row)
 		}
 		row = row[:0]
-		log.Info("Debug row end: ", i)
+		//log.Info("Debug row end: ", i)
 	}
 	return
 }
