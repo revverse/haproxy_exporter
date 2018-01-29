@@ -87,7 +87,7 @@ where /var/lib/haproxy/stats is mask for sockets, app will use /var/lib/haproxy/
 To run the haproxy exporter as a Docker container, run:
 
 ```bash
-docker run -p 9101:9101 quay.io/prometheus/haproxy-exporter:v0.8.0 --haproxy.scrape-uri="http://user:pass@haproxy.example.com/haproxy?stats;csv"
+docker run -p 9101:9101 quay.io/prometheus/haproxy-exporter:v0.9.0 --haproxy.scrape-uri="http://user:pass@haproxy.example.com/haproxy?stats;csv"
 ```
 
 [hub]: https://hub.docker.com/r/prom/haproxy-exporter/
