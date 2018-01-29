@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"reflect"
+//	"reflect"
 	"bytes"
 	"bufio"
 
@@ -296,7 +296,7 @@ func fetchUnix(u *url.URL, timeout time.Duration, nbproc int ) func() (io.ReadCl
 			}else{
 				upath =  u.Path
 			}
-			fmt.Println(upath)
+			//fmt.Println(upath)
 			f, err := net.DialTimeout("unix", upath, timeout)
 			if err != nil {
 				return nil, err
@@ -318,10 +318,10 @@ func fetchUnix(u *url.URL, timeout time.Duration, nbproc int ) func() (io.ReadCl
 
 			contents, _ := ioutil.ReadAll(bufio.NewReader(f))
 			content = append(content, contents...)
-			log.Info("Request: %s", string(content))
-			fmt.Println(reflect.TypeOf(contents))
+			//log.Info("Request: %s", string(content))
+			//fmt.Println(reflect.TypeOf(contents))
 		}
-		fmt.Println(upath)
+		//fmt.Println(upath)
 		return_content := content
 		content = content[:0]
 		return ioutil.NopCloser(bytes.NewReader(return_content)), nil
