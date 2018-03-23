@@ -408,11 +408,11 @@ loop:
 			break loop
 		default:
 			if _, ok := err.(*csv.ParseError); ok {
-				log.Errorf("Can't read CSV: %v", err)
+				// log.Errorf("Can't read CSV: %v", err)
 				e.csvParseFailures.Inc()
 				continue loop
 			}
-			log.Errorf("Unexpected error while reading CSV: %v", err)
+			// log.Errorf("Unexpected error while reading CSV: %v", err)
 			e.up.Set(0)
 			break loop
 		}
