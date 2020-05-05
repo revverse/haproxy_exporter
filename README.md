@@ -1,4 +1,4 @@
-# HAProxy Exporter for Prometheus
+# HAProxy Exporter for Prometheus (fork)
 
 This is a simple server that scrapes HAProxy stats and exports them via HTTP for
 Prometheus consumption.
